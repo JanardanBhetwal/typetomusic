@@ -1,0 +1,3 @@
+#!/bin/bash
+source "/media/JB/typetomusic/venv/bin/activate"
+exec python3 "/media/JB/typetomusic/main.py" "$@"

@@ -1,0 +1,306 @@
+"""
+Audio Engine for TypeToMusic.
+Wraps FluidSynth for low-latency MIDI note playback.
+Thread-safe command queue keeps audio on its own thread.
+"""
+
+import logging
+import threading
+import queue
+import time
+from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+class EngineCommand(Enum):
+    NOTE_ON  = auto()
+    NOTE_OFF = auto()
+    ALL_NOTES_OFF = auto()
+    SET_INSTRUMENT = auto()
+    SET_VOLUME     = auto()
+    SHUTDOWN       = auto()
+
+
+@dataclass
+class AudioCommand:
+    cmd: EngineCommand
+    note: int = 0
+    velocity: int = 100
+    channel: int = 0
+    program: int = 0
+    volume: int = 90
+
+
+class AudioEngine:
+    """
+    Wraps FluidSynth via the `fluidsynth` Python bindings.
+    All FluidSynth calls happen on a dedicated worker thread to avoid
+    blocking the GUI or keyboard listener.
+    """
+
+    def __init__(self, soundfont_path: str, audio_driver: str = "pulseaudio",
+                 sample_rate: int = 44100, buffer_size: int = 64,
+                 reverb: bool = True, chorus: bool = False):
+        self._soundfont_path = soundfont_path
+        self._audio_driver   = audio_driver
+        self._sample_rate    = sample_rate
+        self._buffer_size    = buffer_size
+        self._reverb         = reverb
+        self._chorus         = chorus
+
+        self._fs    = None          # FluidSynth instance
+        self._sfid  = None          # SoundFont ID
+        self._cmd_queue: queue.Queue = queue.Queue(maxsize=512)
+        self._thread: Optional[threading.Thread] = None
+        self._running = False
+        self._ready   = threading.Event()
+        self._error: Optional[str] = None
+
+        # Track active notes per channel for overlap management
+        self._active_notes: dict[int, set[int]] = {}
+
+    # ── Public API ────────────────────────────────────────────────────────
+
+    def start(self) -> bool:
+        """
+        Start the audio engine on a background thread.
+        Returns True if startup succeeded, False otherwise.
+        """
+        if self._running:
+            return True
+        self._running = True
+        self._ready.clear()
+        self._thread = threading.Thread(
+            target=self._worker, name="AudioEngine", daemon=True
+        )
+        self._thread.start()
+        # Wait up to 5 s for FluidSynth to initialise
+        if not self._ready.wait(timeout=5.0):
+            logger.error("AudioEngine failed to start within timeout.")
+            self._running = False
+            return False
+        return self._error is None
+
+    def stop(self) -> None:
+        """Stop all notes and shut down FluidSynth."""
+        if not self._running:
+            return
+        self._cmd_queue.put(AudioCommand(cmd=EngineCommand.SHUTDOWN))
+        if self._thread:
+            self._thread.join(timeout=3.0)
+        self._running = False
+        logger.info("AudioEngine stopped.")
+
+    def play_note(self, note: int, velocity: int, channel: int = 0,
+                  duration_ms: int = 120) -> None:
+        """Queue a note-on followed by a timed note-off."""
+        if not self._running or self._error:
+            return
+        velocity = max(1, min(127, velocity))
+        note     = max(0, min(127, note))
+
+        try:
+            self._cmd_queue.put_nowait(
+                AudioCommand(cmd=EngineCommand.NOTE_ON,
+                             note=note, velocity=velocity, channel=channel)
+            )
+        except queue.Full:
+            logger.warning("AudioEngine command queue full; dropping note.")
+            return
+
+        # Schedule note-off in a lightweight timer thread
+        t = threading.Timer(
+            duration_ms / 1000.0,
+            self._enqueue_note_off,
+            args=(note, channel)
+        )
+        t.daemon = True
+        t.start()
+
+    def all_notes_off(self) -> None:
+        """Immediately silence all channels."""
+        if not self._running:
+            return
+        try:
+            self._cmd_queue.put_nowait(
+                AudioCommand(cmd=EngineCommand.ALL_NOTES_OFF)
+            )
+        except queue.Full:
+            pass
+
+    def set_instrument(self, program: int, channel: int = 0) -> None:
+        """Change GM instrument program on the given channel."""
+        if not self._running:
+            return
+        try:
+            self._cmd_queue.put_nowait(
+                AudioCommand(cmd=EngineCommand.SET_INSTRUMENT,
+                             program=program, channel=channel)
+            )
+        except queue.Full:
+            pass
+
+    def set_volume(self, volume: int) -> None:
+        """Set master volume ceiling (0–127)."""
+        if not self._running:
+            return
+        try:
+            self._cmd_queue.put_nowait(
+                AudioCommand(cmd=EngineCommand.SET_VOLUME, volume=volume)
+            )
+        except queue.Full:
+            pass
+
+    @property
+    def is_ready(self) -> bool:
+        return self._running and self._error is None
+
+    @property
+    def error(self) -> Optional[str]:
+        return self._error
+
+    # ── Internal ──────────────────────────────────────────────────────────
+
+    def _enqueue_note_off(self, note: int, channel: int) -> None:
+        try:
+            self._cmd_queue.put_nowait(
+                AudioCommand(cmd=EngineCommand.NOTE_OFF,
+                             note=note, channel=channel)
+            )
+        except queue.Full:
+            pass
+
+    def _worker(self) -> None:
+        """Audio thread: initialise FluidSynth and process commands."""
+        try:
+            import fluidsynth as fs_lib
+        except ImportError:
+            self._error = (
+                "python-fluidsynth not installed. "
+                "Run: pip install pyfluidsynth"
+            )
+            logger.error(self._error)
+            self._ready.set()
+            return
+
+        # ── Init FluidSynth ──────────────────────────────────────────────
+        settings = {
+            "audio.driver":           self._audio_driver,
+            "audio.sample-rate":      self._sample_rate,
+            "audio.period-size":      self._buffer_size,
+            "audio.periods":          2,
+            "synth.gain":             2.5,
+            "synth.reverb.active":    "yes" if self._reverb  else "no",
+            "synth.chorus.active":    "yes" if self._chorus  else "no",
+            "synth.midi-channels":    16,
+            "synth.polyphony":        64,
+        }
+
+        try:
+            self._fs = fs_lib.Synth(**settings)
+            self._fs.start(driver=self._audio_driver)
+        except Exception as exc:
+            # Fallback: try PulseAudio → ALSA → sdl2
+            fallback_drivers = ["pulseaudio", "alsa", "sdl2", "oss"]
+            started = False
+            for drv in fallback_drivers:
+                if drv == self._audio_driver:
+                    continue
+                try:
+                    logger.warning(
+                        f"Driver '{self._audio_driver}' failed ({exc}); "
+                        f"trying '{drv}'..."
+                    )
+                    self._fs = fs_lib.Synth(**{**settings, "audio.driver": drv})
+                    self._fs.start(driver=drv)
+                    logger.info(f"Audio engine started with driver: {drv}")
+                    started = True
+                    break
+                except Exception:
+                    pass
+            if not started:
+                self._error = f"Cannot start any audio driver: {exc}"
+                logger.error(self._error)
+                self._ready.set()
+                return
+
+        # ── Load SoundFont ───────────────────────────────────────────────
+        if not self._soundfont_path:
+            self._error = "No SoundFont path configured."
+            logger.error(self._error)
+            self._fs.delete()
+            self._ready.set()
+            return
+
+        try:
+            self._sfid = self._fs.sfload(self._soundfont_path)
+            if self._sfid == -1:
+                raise RuntimeError(f"sfload returned -1 for {self._soundfont_path}")
+            # Select bank 0, program 0 on all 16 channels
+            for ch in range(16):
+                self._fs.sfont_select(ch, self._sfid)
+                self._fs.program_change(ch, 0)
+            logger.info(f"SoundFont loaded: {self._soundfont_path}")
+        except Exception as exc:
+            self._error = f"Failed to load SoundFont: {exc}"
+            logger.error(self._error)
+            self._fs.delete()
+            self._ready.set()
+            return
+
+        # ── Signal ready ─────────────────────────────────────────────────
+        self._ready.set()
+        logger.info("AudioEngine ready.")
+
+        # ── Command loop ─────────────────────────────────────────────────
+        master_volume = 150
+
+        while True:
+            try:
+                cmd_obj: AudioCommand = self._cmd_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+
+            cmd = cmd_obj.cmd
+
+            if cmd == EngineCommand.SHUTDOWN:
+                self._fs.all_notes_off(-1)
+                time.sleep(0.05)
+                self._fs.delete()
+                logger.debug("FluidSynth deleted.")
+                return
+
+            elif cmd == EngineCommand.NOTE_ON:
+                ch   = cmd_obj.channel
+                note = cmd_obj.note
+                vel  = int(cmd_obj.velocity * master_volume / 100)
+                vel  = max(1, min(127, vel))
+                # Stop same note if already playing (no stuck notes)
+                active = self._active_notes.setdefault(ch, set())
+                if note in active:
+                    self._fs.noteoff(ch, note)
+                active.add(note)
+                self._fs.noteon(ch, note, vel)
+
+            elif cmd == EngineCommand.NOTE_OFF:
+                ch   = cmd_obj.channel
+                note = cmd_obj.note
+                self._fs.noteoff(ch, note)
+                self._active_notes.setdefault(ch, set()).discard(note)
+
+            elif cmd == EngineCommand.ALL_NOTES_OFF:
+                self._fs.all_notes_off(-1)
+                self._active_notes.clear()
+
+            elif cmd == EngineCommand.SET_INSTRUMENT:
+                ch   = cmd_obj.channel
+                prog = max(0, min(127, cmd_obj.program))
+                self._fs.program_change(ch, prog)
+                logger.debug(f"Instrument changed: ch={ch} prog={prog}")
+
+            elif cmd == EngineCommand.SET_VOLUME:
+                master_volume = max(0, min(127, cmd_obj.volume))
+                logger.debug(f"Master volume set to {master_volume}")

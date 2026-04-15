@@ -1,0 +1,14 @@
+Package: typetomusic
+Version: 1.0.0
+Section: sound
+Priority: optional
+Architecture: amd64
+Depends: python3 (>= 3.9), python3-pyqt5, libfluidsynth3 | libfluidsynth2, fluid-soundfont-gm, python3-pip
+Maintainer: TypeToMusic Contributors <typetomusic@example.com>
+Description: Turn your keyboard into a musical instrument
+ TypeToMusic captures every keystroke system-wide and plays a MIDI note
+ in real time using FluidSynth. Supports multiple musical scales,
+ GM instruments, and dynamic velocity from typing speed.
+ .
+ Features: global key capture, low-latency MIDI playback, scale selection,
+ instrument selection, and an animated waveform visualiser.

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=TypeToMusic
+GenericName=Musical Keyboard
+Comment=Turn your keyboard into a musical instrument
+Exec=typetomusic
+Icon=typetomusic
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Music;
+Keywords=music;keyboard;midi;piano;instrument;
+StartupNotify=true

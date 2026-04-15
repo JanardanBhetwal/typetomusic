@@ -1,0 +1,12 @@
+#!/bin/bash
+# Post-install script for TypeToMusic .deb package
+set -e
+
+echo "Installing Python dependencies for TypeToMusic..."
+pip3 install --quiet pyfluidsynth pynput PyQt5 2>/dev/null || true
+
+echo "TypeToMusic installed successfully."
+echo "Run with: typetomusic"
+echo ""
+echo "If you encounter audio issues, ensure PulseAudio is running:"
+echo "  pulseaudio --start"
