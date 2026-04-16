@@ -57,13 +57,13 @@ TypeToMusic is a Linux desktop application that captures every key you press —
 
 ### System (Ubuntu / Linux Mint)
 
-| Package                                 | Purpose                        |
-| --------------------------------------- | ------------------------------ |
-| `python3` (≥ 3.9)                       | Runtime                        |
-| `python3-pip`                           | Package installer              |
-| `libfluidsynth3` or `libfluidsynth-dev` | MIDI synthesis library         |
-| `fluid-soundfont-gm`                    | Default GM SoundFont (FluidR3) |
-| `python3-pyqt5`                         | GUI framework                  |
+| Package                                      | Purpose                        |
+| -------------------------------------------- | ------------------------------ |
+| `python3` (≥ 3.9)                            | Runtime                        |
+| `fluidsynth` + `python3-fluidsynth`          | MIDI synthesis + Python bridge |
+| `fluid-soundfont-gm` or `timgm6mb-soundfont` | Default GM SoundFont           |
+| `python3-pyqt5`                              | GUI framework                  |
+| `python3-pynput`                             | System-wide key capture        |
 
 ### Python packages
 
@@ -103,10 +103,9 @@ The installer:
 ```bash
 sudo apt update
 sudo apt install -y \
-    python3 python3-pip python3-venv \
-    libfluidsynth-dev libfluidsynth3 \
-    fluid-soundfont-gm \
-    python3-pyqt5
+    python3 python3-pyqt5 python3-pynput \
+    fluidsynth python3-fluidsynth \
+    fluid-soundfont-gm || sudo apt install -y timgm6mb-soundfont
 ```
 
 ### Step 2 — Create a virtual environment (recommended)
@@ -116,14 +115,7 @@ python3 -m venv venv --system-site-packages
 source venv/bin/activate
 ```
 
-### Step 3 — Install Python packages
-
-```bash
-pip install pyfluidsynth pynput
-# PyQt5 is already available via system-site-packages
-```
-
-### Step 4 — Run
+### Step 3 — Run
 
 ```bash
 python3 main.py
@@ -257,16 +249,15 @@ The binary bundles Python and all dependencies. Share the entire `dist/TypeToMus
 # Requires dpkg-deb (pre-installed on Ubuntu/Mint)
 bash scripts/build.sh deb
 
-# Install the package (file name is generated from version + architecture)
-sudo dpkg -i dist/typetomusic_*_*.deb || sudo apt-get -f install -y
+# Install the package (auto-installs dependencies)
+sudo apt install -y ./dist/typetomusic_*_*.deb
 
 # Run
 typetomusic
 ```
 
 Share the generated `.deb` file from `dist/` with other Ubuntu/Mint users.
-System dependencies are resolved by apt, and Python runtime dependencies are
-installed automatically during package setup (no manual `pip` step).
+System dependencies are resolved automatically by apt.
 
 ---
 
@@ -295,7 +286,7 @@ ls /usr/share/sounds/sf2/
 ls /usr/share/soundfonts/
 
 # Install missing SoundFont
-sudo apt install fluid-soundfont-gm
+sudo apt install fluid-soundfont-gm || sudo apt install timgm6mb-soundfont
 ```
 
 ### Audio driver error

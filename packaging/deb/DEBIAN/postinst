@@ -2,16 +2,7 @@
 # Post-install script for TypeToMusic .deb package
 set -e
 
-INSTALL_DIR="/usr/share/typetomusic"
-VENV_DIR="$INSTALL_DIR/venv"
-
-echo "Setting up Python runtime for TypeToMusic..."
-if [ ! -x "$VENV_DIR/bin/python3" ]; then
-    python3 -m venv --system-site-packages "$VENV_DIR"
-fi
-
-"$VENV_DIR/bin/python3" -m pip install --quiet --upgrade pip
-"$VENV_DIR/bin/python3" -m pip install --quiet pyfluidsynth pynput
+echo "Configuring TypeToMusic..."
 
 if command -v update-desktop-database >/dev/null 2>&1; then
 	update-desktop-database -q /usr/share/applications || true

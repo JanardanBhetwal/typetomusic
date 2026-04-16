@@ -19,20 +19,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install build tools
         run: |
           sudo apt update
-          sudo apt install -y dpkg-dev python3 python3-pyqt5 fluidsynth fluid-soundfont-gm
+          sudo apt install -y dpkg-dev
 
       - name: Build DEB
+        id: build_deb
         run: |
           chmod 755 packaging/deb/DEBIAN/postinst
-          dpkg-deb --build packaging/deb typetomusic.deb
+          chmod 755 packaging/deb/usr/bin/typetomusic
+
+          APP_DIR="packaging/deb/usr/share/typetomusic"
+          rm -rf "${APP_DIR}"
+          mkdir -p "${APP_DIR}"
+          cp main.py "${APP_DIR}/"
+          cp -r typetomusic "${APP_DIR}/typetomusic"
+          cp requirements.txt "${APP_DIR}/"
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(grep -E '^__version__\s*=\s*"' typetomusic/__init__.py | sed -E 's/^__version__\s*=\s*"([^"]+)"/\1/')
+          fi
+
+          sed -i "s/^Version:.*/Version: ${VERSION}/" packaging/deb/DEBIAN/control
+          sed -i "s/^Architecture:.*/Architecture: all/" packaging/deb/DEBIAN/control
+
+          DEB_PACKAGE_NAME="typetomusic_${VERSION}_all.deb"
+          dpkg-deb --build packaging/deb "${DEB_PACKAGE_NAME}"
+          echo "deb_package_name=${DEB_PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Upload Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: typetomusic.deb
+          files: ${{ steps.build_deb.outputs.deb_package_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

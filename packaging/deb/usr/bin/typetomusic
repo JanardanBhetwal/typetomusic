@@ -4,9 +4,5 @@
 
 INSTALL_DIR="/usr/share/typetomusic"
 
-# Use the virtual environment if it exists, otherwise system Python
-if [ -f "$INSTALL_DIR/venv/bin/python3" ]; then
-    exec "$INSTALL_DIR/venv/bin/python3" "$INSTALL_DIR/main.py" "$@"
-else
-    exec python3 "$INSTALL_DIR/main.py" "$@"
-fi
+# Use system Python; runtime dependencies are installed via apt.
+exec python3 "$INSTALL_DIR/main.py" "$@"
