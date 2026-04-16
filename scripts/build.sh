@@ -77,7 +77,7 @@ build_deb() {
     CONTROL_FILE="$DEB_ROOT/DEBIAN/control"
     PKG_VERSION=$(grep -E '^__version__\s*=\s*"' "$PROJECT_DIR/typetomusic/__init__.py" | sed -E 's/^__version__\s*=\s*"([^"]+)"/\1/')
     [ -n "$PKG_VERSION" ] || error "Could not determine package version from typetomusic/__init__.py"
-    ARCH=$(dpkg --print-architecture)
+    ARCH="all"
 
     # Clean previous build
     rm -rf "$APP_DIR"
@@ -94,7 +94,7 @@ build_deb() {
 
     # Keep control metadata in sync
     sed -i "s/^Version:.*/Version: $PKG_VERSION/" "$CONTROL_FILE"
-    sed -i "s/^Architecture:.*/Architecture: $ARCH/" "$CONTROL_FILE"
+    sed -i "s/^Architecture:.*/Architecture: all/" "$CONTROL_FILE"
 
     # Set package size
     SIZE=$(du -sk "$DEB_ROOT" | awk '{print $1}')
@@ -107,7 +107,7 @@ build_deb() {
     dpkg-deb --build "$DEB_ROOT" "$DEB_FILE" || error "dpkg-deb failed"
 
     info "Package built: $DEB_FILE"
-    info "Install with: sudo dpkg -i $DEB_FILE"
+    info "Install with: sudo apt install -y $DEB_FILE"
 }
 
 # ── Dispatch ──────────────────────────────────────────────────────────────────
