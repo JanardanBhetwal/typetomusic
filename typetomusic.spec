@@ -7,27 +7,42 @@ import sys
 
 block_cipher = None
 
+def optional_import(name):
+    try:
+        __import__(name)
+        return True
+    except ImportError:
+        return False
+
+
+binaries = []
+for candidate in [
+    '/usr/lib/x86_64-linux-gnu/libfluidsynth.so.3',
+    '/usr/lib/libfluidsynth.so.3',
+]:
+    if os.path.isfile(candidate):
+        binaries.append((candidate, '.'))
+
+hiddenimports = [
+    'PyQt5.sip',
+    'PyQt5.QtCore',
+    'PyQt5.QtGui',
+    'PyQt5.QtWidgets',
+]
+for module in ['pynput.keyboard._xorg', 'pynput.mouse._xorg', 'fluidsynth', 'evdev']:
+    if optional_import(module.split('.')[0]):
+        hiddenimports.append(module)
+
 a = Analysis(
     ['main.py'],
     pathex=['.'],
-    binaries=[
-        # Include libfluidsynth shared library if present
-        ('/usr/lib/x86_64-linux-gnu/libfluidsynth.so.3', '.'),
-    ],
+    binaries=binaries,
     datas=[
         # Bundle the default SoundFont if it exists
         ('/usr/share/sounds/sf2/FluidR3_GM.sf2',   'assets/soundfonts/'),
         ('/usr/share/soundfonts/FluidR3_GM.sf2',    'assets/soundfonts/'),
     ],
-    hiddenimports=[
-        'PyQt5.sip',
-        'PyQt5.QtCore',
-        'PyQt5.QtGui',
-        'PyQt5.QtWidgets',
-        'pynput.keyboard._xorg',
-        'pynput.mouse._xorg',
-        'fluidsynth',
-    ],
+    hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
     excludes=['tkinter', 'matplotlib', 'numpy', 'scipy'],

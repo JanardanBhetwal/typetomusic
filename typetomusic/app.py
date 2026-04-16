@@ -6,14 +6,14 @@ Exposes a clean interface to the GUI layer.
 
 import logging
 import threading
-from typing import Optional, Callable
+from typing import Optional
 
 from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QMainWindow
 
-from .config import AppConfig, GM_INSTRUMENTS
-from .audio_engine import AudioEngine
-from .keyboard_listener import KeyboardListener, VelocityTracker
+from .config import AppConfig
+from .audio_engine import AudioEngine, AudioMode
+from .keyboard_listener import KeyboardListener, VelocityTracker, InputMode
 from .scale_mapper import ScaleMapper
 from .gui import MainWindow
 
@@ -57,13 +57,6 @@ class AppController(QObject):
 
     def initialise_audio(self) -> bool:
         """Start the audio engine. Returns True on success."""
-        if not self._config.soundfont_path:
-            msg = "No SoundFont configured. Please set a SoundFont path."
-            logger.error(msg)
-            self.status_changed.emit(msg, "error")
-            self.engine_ready.emit(False)
-            return False
-
         self._audio = AudioEngine(
             soundfont_path=self._config.soundfont_path,
             audio_driver=self._config.audio_driver,
@@ -79,14 +72,19 @@ class AppController(QObject):
                 self._config.instrument_channel,
             )
             self._audio.set_volume(self._config.volume)
-            self.status_changed.emit("Audio engine ready.", "ok")
+            if self._audio.mode == AudioMode.SILENT:
+                warn = self._audio.warning or "Audio backend unavailable. Running in silent mode."
+                self.status_changed.emit(warn, "warn")
+                logger.warning(warn)
+            else:
+                self.status_changed.emit("Audio engine ready.", "ok")
             self.engine_ready.emit(True)
             logger.info("Audio engine started successfully.")
         else:
             err = self._audio.error or "Unknown audio error."
             self.status_changed.emit(f"Audio error: {err}", "error")
             self.engine_ready.emit(False)
-            logger.error(f"Audio engine failed: {err}")
+            logger.error("Audio engine failed: %s", err)
         return ok
 
     def start_listening(self) -> bool:
@@ -102,11 +100,17 @@ class AppController(QObject):
             velocity_tracker=self._velocity,
             use_speed_velocity=self._config.velocity_from_speed,
             fixed_velocity=self._config.volume,
+            backend_hint=self._config.input_backend,
         )
         ok = self._listener.start()
         if ok:
             self._active = True
-            self.status_changed.emit("Listening – start typing!", "ok")
+            if self._listener.mode == InputMode.LIMITED:
+                warn = self._listener.warning or "Keyboard capture is limited in this session."
+                self.status_changed.emit(warn, "warn")
+                logger.warning(warn)
+            else:
+                self.status_changed.emit("Listening – start typing!", "ok")
             logger.info("Keyboard listening started.")
         else:
             self.status_changed.emit("Failed to start keyboard capture.", "error")
@@ -139,14 +143,14 @@ class AppController(QObject):
         self._config.instrument_program = program
         if self._audio:
             self._audio.set_instrument(program, self._config.instrument_channel)
-        logger.debug(f"Instrument set to program {program}")
+        logger.debug("Instrument set to program %s", program)
 
     def set_scale(self, scale_name: str) -> None:
         self._config.scale = scale_name
         self._mapper.update(scale_name=scale_name)
         # Reset key mapping so new scale applies from index 0
         self._reset_key_mapping()
-        logger.debug(f"Scale changed to {scale_name}")
+        logger.debug("Scale changed to %s", scale_name)
 
     def set_root_note(self, midi_note: int) -> None:
         self._config.root_note = midi_note

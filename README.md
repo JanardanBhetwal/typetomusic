@@ -11,12 +11,12 @@
 
 ## What Is TypeToMusic?
 
-TypeToMusic is a Linux desktop application that captures every key you press — anywhere on the system — and plays a corresponding MIDI note through FluidSynth. The faster you type, the louder the notes. Choose your scale, instrument, and root note to turn ordinary typing into an ambient music experience.
+TypeToMusic is a Linux desktop application that turns typing into MIDI music with best-effort global input capture, runtime audio fallback, and graceful limited mode when a desktop session blocks full capture. The faster you type, the louder the notes. Choose your scale, instrument, and root note to turn ordinary typing into an ambient music experience.
 
 **Key highlights:**
 
-- **Global key capture** — works in any application, browser, terminal
-- **Real-time, low-latency MIDI** — FluidSynth with PulseAudio/ALSA
+- **Global key capture** — X11, Wayland helper, or limited mode fallback
+- **Real-time, low-latency MIDI** — FluidSynth with PipeWire / PulseAudio / ALSA fallback
 - **Musical scale mapping** — Major, Minor, Pentatonic, Blues, Dorian, and more
 - **Typing speed → velocity** — fast typing plays louder notes
 - **GM instrument selection** — Piano, Kalimba, Flute, Strings, and 20+ presets
@@ -57,21 +57,22 @@ TypeToMusic is a Linux desktop application that captures every key you press —
 
 ### System (Ubuntu / Linux Mint)
 
-| Package                                      | Purpose                        |
-| -------------------------------------------- | ------------------------------ |
-| `python3` (≥ 3.9)                            | Runtime                        |
-| `fluidsynth` + `python3-fluidsynth`          | MIDI synthesis + Python bridge |
-| `fluid-soundfont-gm` or `timgm6mb-soundfont` | Default GM SoundFont           |
-| `python3-pyqt5`                              | GUI framework                  |
-| `python3-pynput`                             | System-wide key capture        |
+| Package                                      | Purpose                       |
+| -------------------------------------------- | ----------------------------- |
+| `python3` (≥ 3.9)                            | Runtime                       |
+| `python3-pyqt5`                              | GUI framework                 |
+| `python3-pynput` or `python3-evdev`          | Optional input backends       |
+| `fluidsynth` + `python3-fluidsynth`          | Optional MIDI synthesis stack |
+| `fluid-soundfont-gm` or `timgm6mb-soundfont` | Optional default GM SoundFont |
 
 ### Python packages
 
-| Package        | Purpose                    |
-| -------------- | -------------------------- |
-| `PyQt5`        | GUI                        |
-| `pynput`       | System-wide key capture    |
-| `pyfluidsynth` | FluidSynth Python bindings |
+| Package        | Purpose                      |
+| -------------- | ---------------------------- |
+| `PyQt5`        | GUI                          |
+| `pynput`       | Optional X11 capture         |
+| `evdev`        | Optional Wayland / raw input |
+| `pyfluidsynth` | Optional FluidSynth bridge   |
 
 ---
 
@@ -88,11 +89,7 @@ bash scripts/install.sh
 ./typetomusic
 ```
 
-The installer:
-
-- Installs all system packages via `apt`
-- Creates a Python virtual environment
-- Adds a desktop shortcut to your app menu
+The installer sets up the core app and then enables optional backends when they are available.
 
 ---
 
@@ -103,7 +100,8 @@ The installer:
 ```bash
 sudo apt update
 sudo apt install -y \
-    python3 python3-pyqt5 python3-pynput \
+    python3 python3-pyqt5 \
+    python3-pynput python3-evdev \
     fluidsynth python3-fluidsynth \
     fluid-soundfont-gm || sudo apt install -y timgm6mb-soundfont
 ```
@@ -121,6 +119,8 @@ source venv/bin/activate
 python3 main.py
 ```
 
+If optional packages are missing, the app still launches and switches to limited or silent mode instead of failing.
+
 ---
 
 ## Project Structure
@@ -136,8 +136,8 @@ typetomusic/
 ├── typetomusic/                 # Main application package
 │   ├── __init__.py
 │   ├── app.py                   # AppController + TypeToMusicApp (QMainWindow)
-│   ├── audio_engine.py          # FluidSynth wrapper (threaded)
-│   ├── keyboard_listener.py     # Global pynput key capture + velocity tracker
+│   ├── audio_engine.py          # Audio backend manager with silent fallback
+│   ├── keyboard_listener.py     # Input backend manager with limited-mode fallback
 │   ├── scale_mapper.py          # Key index → MIDI note mapping
 │   ├── config.py                # Persistent JSON config + GM instrument list
 │   └── gui.py                   # PyQt5 GUI (MainWindow, visualiser, controls)
@@ -150,14 +150,18 @@ typetomusic/
 │   └── build.sh                 # Build script (run / exe / deb)
 │
 └── packaging/
-    └── deb/
-        ├── DEBIAN/
-        │   ├── control          # Package metadata
-        │   └── postinst         # Post-install hook
-        └── usr/
-            ├── bin/typetomusic  # Shell launcher
-            └── share/
-                └── applications/typetomusic.desktop
+    ├── deb/
+    │   ├── DEBIAN/
+    │   │   ├── control          # Package metadata
+    │   │   └── postinst         # Post-install hook
+    │   └── usr/
+    │       ├── bin/typetomusic  # Shell launcher
+    │       └── share/
+    │           └── applications/typetomusic.desktop
+    ├── rpm/
+    │   └── typetomusic.spec     # Fedora/RPM packaging spec
+    └── arch/
+        └── PKGBUILD             # Arch Linux package recipe
 ```
 
 ---
@@ -169,32 +173,27 @@ typetomusic/
 │                      GUI Thread (Qt)                    │
 │  MainWindow  ←signals→  AppController                   │
 │     │                        │                          │
-│  NoteVisualiser          ScaleMapper                     │
-│  StatusLED               VelocityTracker                 │
+│  NoteVisualiser          StatusLED                      │
+│  ScaleMapper             VelocityTracker                │
 └────────────────────────────┬────────────────────────────┘
-                             │ thread-safe callbacks
-         ┌───────────────────┼───────────────────┐
-         │                   │                   │
-┌────────▼───────┐  ┌────────▼────────┐         │
-│ Keyboard Thread│  │  Audio Thread   │         │
-│  (pynput)      │  │  (FluidSynth)   │         │
-│                │  │                 │         │
-│ on_press(key)  │  │  cmd_queue      │         │
-│       │        │  │  NOTE_ON        │         │
-│       └────────┼─►│  NOTE_OFF       │         │
-│                │  │  SET_INSTRUMENT │         │
-└────────────────┘  └─────────────────┘         │
-                                                 │
-                              Timer threads (note-off scheduling)
+                                      │
+                    ┌─────────────┼─────────────┐
+                    │                           │
+        Input backend manager        Audio backend manager
+    (X11 / Wayland / limited)     (FluidSynth / silent)
+                    │                           │
+                    └─────────────┬─────────────┘
+                                      │
+                         AppController routes events
 ```
 
 **Design decisions:**
 
-- **PyQt5** chosen over PySide6 for its wider Ubuntu/Mint package availability (`python3-pyqt5` in apt). PySide6 requires pip-only install which is heavier for distribution.
-- **FluidSynth** runs on a dedicated thread with a bounded command queue to prevent any audio call from blocking the GUI.
-- **pynput** runs its own daemon thread. Key events are dispatched via callbacks (not polling), keeping CPU near 0% at idle.
-- **Note-off scheduling** uses lightweight `threading.Timer` objects (one per note) rather than a single scheduler thread, keeping code simple and latency low.
-- **Scale mapper** assigns a stable index to each unique key string. The same key always produces the same note within a session, making the sound feel musical rather than random.
+- **PyQt5** stays the UI layer because it is available across the target distros.
+- **Input and audio are abstracted** so optional packages can disappear without breaking launch.
+- **Wayland sessions** prefer a safe event-device backend when available and otherwise fall back to limited mode.
+- **Audio** prefers FluidSynth with runtime driver fallback, then silent mode if no synth is available.
+- **Scale mapper** assigns a stable index to each unique key string so the same key stays musically consistent.
 
 ---
 
@@ -213,7 +212,7 @@ Key settings you can edit manually:
   "soundfont_path": "/usr/share/sounds/sf2/FluidR3_GM.sf2",
   "instrument_program": 0,
   "volume": 90,
-  "audio_driver": "pulseaudio",
+  "audio_driver": "auto",
   "scale": "major",
   "root_note": 60,
   "octave_range": 3,
@@ -222,7 +221,7 @@ Key settings you can edit manually:
 }
 ```
 
-**Audio drivers:** `pulseaudio` (default) → `alsa` → `sdl2` (auto-fallback)
+**Audio drivers:** `auto` → `pipewire` → `pulseaudio` → `alsa` → `jack` → `sdl2` → silent fallback
 
 ---
 
@@ -257,7 +256,16 @@ typetomusic
 ```
 
 Share the generated `.deb` file from `dist/` with other Ubuntu/Mint users.
-System dependencies are resolved automatically by apt.
+System dependencies are resolved automatically by apt when available, and missing optional backends only reduce functionality instead of breaking install.
+
+## Cross-Distro Packaging
+
+- `.deb` — Debian, Ubuntu, Mint, Kali
+- `.rpm` — Fedora and compatible RPM systems
+- `PKGBUILD` — Arch Linux and derivatives
+- `pip install` — core app plus optional extras for X11, Wayland, and audio
+
+The rule is simple: only the GUI and Python runtime are hard requirements. Everything else is optional and must fall back cleanly.
 
 ---
 
@@ -289,6 +297,8 @@ ls /usr/share/soundfonts/
 sudo apt install fluid-soundfont-gm || sudo apt install timgm6mb-soundfont
 ```
 
+If no synth package is available, TypeToMusic still launches in silent mode.
+
 ### Audio driver error
 
 Edit `~/.config/typetomusic/config.json` and change `audio_driver` to `"alsa"`:
@@ -299,11 +309,17 @@ Edit `~/.config/typetomusic/config.json` and change `audio_driver` to `"alsa"`:
 
 ### Keys not captured globally
 
-TypeToMusic uses `pynput` which requires access to X11 input events.
+TypeToMusic auto-selects the best available input backend.
 
-- Make sure you are running an **X11** session (not Wayland)
-- Check: `echo $XDG_SESSION_TYPE` → should print `x11`
-- On Wayland, global capture requires elevated permissions
+- On X11, it prefers `pynput`.
+- On Wayland, it tries `evdev` if device access is available.
+- If neither path is available, it switches to limited mode instead of crashing.
+
+Check your session type with:
+
+```bash
+echo $XDG_SESSION_TYPE
+```
 
 ### High latency
 
@@ -318,7 +334,7 @@ Or install `jackd` and set `"audio_driver": "jack"` for ultra-low latency.
 ### PyFluidSynth import error
 
 ```bash
-# Ensure libfluidsynth is installed
+# Optional only; the app still runs without it
 sudo apt install libfluidsynth-dev
 
 # Reinstall Python bindings

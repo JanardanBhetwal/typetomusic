@@ -24,18 +24,21 @@ check_python() {
     info "Python OK: $(python3 --version)"
 }
 
-check_system_deps() {
-    info "Checking system dependencies..."
-    local missing=()
-    for pkg in libfluidsynth-dev fluid-soundfont-gm; do
-        dpkg -l "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
-    done
-    if [ ${#missing[@]} -gt 0 ]; then
-        warn "Missing system packages: ${missing[*]}"
-        info "Installing missing packages..."
-        sudo apt-get install -y "${missing[@]}" || error "apt install failed"
+check_optional_deps() {
+    info "Checking optional runtime dependencies..."
+
+    if command -v dpkg >/dev/null 2>&1; then
+        local optional_missing=()
+        for pkg in python3-pynput python3-evdev python3-fluidsynth fluidsynth fluid-soundfont-gm timgm6mb-soundfont; do
+            dpkg -s "$pkg" >/dev/null 2>&1 || optional_missing+=("$pkg")
+        done
+        if [ ${#optional_missing[@]} -gt 0 ]; then
+            warn "Optional packages not installed: ${optional_missing[*]}"
+            warn "TypeToMusic will still run with graceful fallback modes."
+        fi
+    else
+        warn "dpkg not available; skipping distro package checks."
     fi
-    info "System deps OK."
 }
 
 install_python_deps() {
@@ -51,7 +54,7 @@ install_python_deps() {
 run_from_source() {
     info "Running TypeToMusic from source..."
     check_python
-    check_system_deps
+    check_optional_deps
     install_python_deps
     cd "$PROJECT_DIR"
     python3 main.py
@@ -60,7 +63,7 @@ run_from_source() {
 build_exe() {
     info "Building standalone executable with PyInstaller..."
     check_python
-    check_system_deps
+    check_optional_deps
     install_python_deps
     pip3 install pyinstaller --quiet
     cd "$PROJECT_DIR"

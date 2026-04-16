@@ -31,8 +31,6 @@ info "Installing system packages..."
 sudo apt-get update -qq
 sudo apt-get install -y \
     python3 python3-pip python3-venv \
-    libfluidsynth-dev libfluidsynth3 \
-    fluid-soundfont-gm \
     python3-pyqt5 \
     --no-install-recommends
 ok "System packages installed."
@@ -49,7 +47,7 @@ source "$VENV_DIR/bin/activate"
 
 info "Installing Python packages..."
 pip install --upgrade pip --quiet
-pip install pyfluidsynth pynput --quiet
+pip install -e ".[all]" --quiet || pip install -e . --quiet
 ok "Python packages installed."
 
 # ── Desktop shortcut ─────────────────────────────────────────────────────────
@@ -79,7 +77,7 @@ ok "Launcher created: $LAUNCHER"
 
 # ── SoundFont check ────────────────────────────────────────────────────────────
 SF_FOUND=false
-for sf in /usr/share/sounds/sf2/FluidR3_GM.sf2 /usr/share/soundfonts/FluidR3_GM.sf2; do
+for sf in /usr/share/sounds/sf2/FluidR3_GM.sf2 /usr/share/soundfonts/FluidR3_GM.sf2 /usr/share/sounds/sf2/TimGM6mb.sf2; do
     if [ -f "$sf" ]; then
         ok "SoundFont found: $sf"
         SF_FOUND=true

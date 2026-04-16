@@ -17,10 +17,13 @@ CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 # Default SoundFont search paths (Ubuntu / Linux Mint)
 SOUNDFONT_SEARCH_PATHS = [
     "/usr/share/sounds/sf2/FluidR3_GM.sf2",
+    "/usr/share/sounds/sf2/TimGM6mb.sf2",
     "/usr/share/soundfonts/FluidR3_GM.sf2",
     "/usr/share/soundfonts/default.sf2",
     "/usr/share/sounds/sf2/TimGM6mb.sf2",
     os.path.expanduser("~/.local/share/typetomusic/soundfonts/FluidR3_GM.sf2"),
+    os.path.expanduser("~/.local/share/soundfonts/FluidR3_GM.sf2"),
+    "/usr/share/TimGM6mb.sf2",
 ]
 
 
@@ -43,11 +46,12 @@ class AppConfig:
     instrument_program: int = 0          # GM program number (0 = Acoustic Grand Piano)
     instrument_channel: int = 0
     volume: int = 90                     # 0–127 MIDI velocity ceiling
-    audio_driver: str = "pulseaudio"     # pulseaudio | alsa | jack
+    audio_driver: str = "auto"          # auto | pipewire | pulseaudio | alsa | jack
     sample_rate: int = 44100
     buffer_size: int = 64                # frames per buffer (latency tuning)
     reverb: bool = True
     chorus: bool = False
+    audio_backend: str = "auto"         # auto | fluidsynth | silent
 
     # Musical
     scale: str = "major"                 # major | minor | pentatonic | chromatic
@@ -55,6 +59,7 @@ class AppConfig:
     octave_range: int = 3                # how many octaves the key mapping spans
 
     # Keyboard
+    input_backend: str = "auto"         # auto | pynput | evdev | limited
     velocity_from_speed: bool = True     # typing speed affects note velocity
     velocity_decay_ms: int = 300         # ms window for speed measurement
     note_duration_ms: int = 120          # how long each note plays (ms)

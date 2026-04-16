@@ -22,9 +22,20 @@ setup(
     packages=find_packages(),
     install_requires=[
         "PyQt5>=5.15.0",
-        "pynput>=1.7.6",
-        "pyfluidsynth>=1.3.3",
     ],
+    extras_require={
+        "x11": ["pynput>=1.7.6"],
+        "wayland": ["evdev>=1.6.0"],
+        "audio": ["pyfluidsynth>=1.3.3"],
+        "dev": ["pyinstaller>=6.0.0", "pytest>=8.0.0"],
+        "all": [
+            "pynput>=1.7.6",
+            "evdev>=1.6.0",
+            "pyfluidsynth>=1.3.3",
+            "pyinstaller>=6.0.0",
+            "pytest>=8.0.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "typetomusic=main:main",
