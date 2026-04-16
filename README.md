@@ -57,20 +57,20 @@ TypeToMusic is a Linux desktop application that captures every key you press —
 
 ### System (Ubuntu / Linux Mint)
 
-| Package | Purpose |
-|---|---|
-| `python3` (≥ 3.9) | Runtime |
-| `python3-pip` | Package installer |
-| `libfluidsynth3` or `libfluidsynth-dev` | MIDI synthesis library |
-| `fluid-soundfont-gm` | Default GM SoundFont (FluidR3) |
-| `python3-pyqt5` | GUI framework |
+| Package                                 | Purpose                        |
+| --------------------------------------- | ------------------------------ |
+| `python3` (≥ 3.9)                       | Runtime                        |
+| `python3-pip`                           | Package installer              |
+| `libfluidsynth3` or `libfluidsynth-dev` | MIDI synthesis library         |
+| `fluid-soundfont-gm`                    | Default GM SoundFont (FluidR3) |
+| `python3-pyqt5`                         | GUI framework                  |
 
 ### Python packages
 
-| Package | Purpose |
-|---|---|
-| `PyQt5` | GUI |
-| `pynput` | System-wide key capture |
+| Package        | Purpose                    |
+| -------------- | -------------------------- |
+| `PyQt5`        | GUI                        |
+| `pynput`       | System-wide key capture    |
 | `pyfluidsynth` | FluidSynth Python bindings |
 
 ---
@@ -89,6 +89,7 @@ bash scripts/install.sh
 ```
 
 The installer:
+
 - Installs all system packages via `apt`
 - Creates a Python virtual environment
 - Adds a desktop shortcut to your app menu
@@ -208,6 +209,7 @@ typetomusic/
 ## Configuration
 
 Settings are persisted automatically to:
+
 ```
 ~/.config/typetomusic/config.json
 ```
@@ -255,12 +257,16 @@ The binary bundles Python and all dependencies. Share the entire `dist/TypeToMus
 # Requires dpkg-deb (pre-installed on Ubuntu/Mint)
 bash scripts/build.sh deb
 
-# Install the package
-sudo dpkg -i dist/typetomusic_1.0.0_amd64.deb
+# Install the package (file name is generated from version + architecture)
+sudo dpkg -i dist/typetomusic_*_*.deb || sudo apt-get -f install -y
 
 # Run
 typetomusic
 ```
+
+Share the generated `.deb` file from `dist/` with other Ubuntu/Mint users.
+System dependencies are resolved by apt, and Python runtime dependencies are
+installed automatically during package setup (no manual `pip` step).
 
 ---
 
@@ -295,6 +301,7 @@ sudo apt install fluid-soundfont-gm
 ### Audio driver error
 
 Edit `~/.config/typetomusic/config.json` and change `audio_driver` to `"alsa"`:
+
 ```json
 { "audio_driver": "alsa" }
 ```
@@ -302,6 +309,7 @@ Edit `~/.config/typetomusic/config.json` and change `audio_driver` to `"alsa"`:
 ### Keys not captured globally
 
 TypeToMusic uses `pynput` which requires access to X11 input events.
+
 - Make sure you are running an **X11** session (not Wayland)
 - Check: `echo $XDG_SESSION_TYPE` → should print `x11`
 - On Wayland, global capture requires elevated permissions
@@ -309,9 +317,11 @@ TypeToMusic uses `pynput` which requires access to X11 input events.
 ### High latency
 
 Reduce buffer size in config:
+
 ```json
 { "buffer_size": 32, "audio_driver": "alsa" }
 ```
+
 Or install `jackd` and set `"audio_driver": "jack"` for ultra-low latency.
 
 ### PyFluidSynth import error
@@ -328,18 +338,18 @@ pip install --force-reinstall pyfluidsynth
 
 ## Supported Scales
 
-| Scale | Intervals |
-|---|---|
-| Major | 0 2 4 5 7 9 11 |
-| Minor | 0 2 3 5 7 8 10 |
-| Pentatonic | 0 2 4 7 9 |
-| Blues | 0 3 5 6 7 10 |
-| Chromatic | 0 1 2 3 4 5 6 7 8 9 10 11 |
-| Dorian | 0 2 3 5 7 9 10 |
-| Lydian | 0 2 4 6 7 9 11 |
-| Mixolydian | 0 2 4 5 7 9 10 |
-| Whole Tone | 0 2 4 6 8 10 |
-| Harmonic Minor | 0 2 3 5 7 8 11 |
+| Scale          | Intervals                 |
+| -------------- | ------------------------- |
+| Major          | 0 2 4 5 7 9 11            |
+| Minor          | 0 2 3 5 7 8 10            |
+| Pentatonic     | 0 2 4 7 9                 |
+| Blues          | 0 3 5 6 7 10              |
+| Chromatic      | 0 1 2 3 4 5 6 7 8 9 10 11 |
+| Dorian         | 0 2 3 5 7 9 10            |
+| Lydian         | 0 2 4 6 7 9 11            |
+| Mixolydian     | 0 2 4 5 7 9 10            |
+| Whole Tone     | 0 2 4 6 8 10              |
+| Harmonic Minor | 0 2 3 5 7 8 11            |
 
 ---
 

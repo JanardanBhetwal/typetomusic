@@ -74,6 +74,10 @@ build_deb() {
 
     DEB_ROOT="$PROJECT_DIR/packaging/deb"
     APP_DIR="$DEB_ROOT/usr/share/typetomusic"
+    CONTROL_FILE="$DEB_ROOT/DEBIAN/control"
+    PKG_VERSION=$(grep -E '^__version__\s*=\s*"' "$PROJECT_DIR/typetomusic/__init__.py" | sed -E 's/^__version__\s*=\s*"([^"]+)"/\1/')
+    [ -n "$PKG_VERSION" ] || error "Could not determine package version from typetomusic/__init__.py"
+    ARCH=$(dpkg --print-architecture)
 
     # Clean previous build
     rm -rf "$APP_DIR"
@@ -88,13 +92,17 @@ build_deb() {
     chmod 755 "$DEB_ROOT/usr/bin/typetomusic"
     chmod 755 "$DEB_ROOT/DEBIAN/postinst"
 
+    # Keep control metadata in sync
+    sed -i "s/^Version:.*/Version: $PKG_VERSION/" "$CONTROL_FILE"
+    sed -i "s/^Architecture:.*/Architecture: $ARCH/" "$CONTROL_FILE"
+
     # Set package size
     SIZE=$(du -sk "$DEB_ROOT" | awk '{print $1}')
     sed -i "s/^Installed-Size:.*/Installed-Size: $SIZE/" \
-        "$DEB_ROOT/DEBIAN/control" 2>/dev/null || true
+        "$CONTROL_FILE" 2>/dev/null || true
 
     # Build the .deb
-    DEB_FILE="$PROJECT_DIR/dist/typetomusic_1.0.0_amd64.deb"
+    DEB_FILE="$PROJECT_DIR/dist/typetomusic_${PKG_VERSION}_${ARCH}.deb"
     mkdir -p "$PROJECT_DIR/dist"
     dpkg-deb --build "$DEB_ROOT" "$DEB_FILE" || error "dpkg-deb failed"
 
